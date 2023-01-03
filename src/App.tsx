@@ -1,5 +1,5 @@
 import { matchesPattern } from "@babel/types"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import "./App.css"
 
 const GRID_SIZE_X = 10
@@ -116,27 +116,24 @@ const reverseDirection = (direction: MovementDirection): MovementDirection => {
   }
 }
 
-class Runner {
-  visited: Set<string>
-  stack: MovementDirection[]
-
+const initialSolution = `(class Runner {
   constructor() {
-    this.visited = new Set<string>()
+    this.visited = new Set()
     this.stack = []
   }
 
-  nextMove = (state: State) => {
+  nextMove = (state) => {
     const { visited, stack } = this
     const winner = checkWin(state)
     if (winner) {
       return
     }
 
-    visited.add(`${state.playerPosition.row}-${state.playerPosition.col}`)
+    visited.add(\`\${state.playerPosition.row}-\${state.playerPosition.col}\`)
 
     const newDirection = Object.values(MovementDirection).find((direction) => {
       const newPos = getNewPosition(direction, state.playerPosition)
-      return !checkOutside(newPos) && !checkCollision(newPos, state) && !visited.has(`${newPos.row}-${newPos.col}`)
+      return !checkOutside(newPos) && !checkCollision(newPos, state) && !visited.has(\`\${newPos.row}-\${newPos.col}\`)
     })
 
     if (newDirection) {
@@ -149,7 +146,34 @@ class Runner {
       }
     }
   }
+})`
+
+const input = `constructor() {
+  this.visited = new Set()
+  this.stack = []
 }
+
+nextMove = (state, possibleDirections) => {
+  const { visited, stack } = this
+
+  visited.add(\`\${state.playerPosition.row}-\${state.playerPosition.col}\`)
+
+  const newDirection = possibleDirections.find((direction) => {
+    const newPos = getNewPosition(direction, state.playerPosition)
+    return !visited.has(\`\${newPos.row}-\${newPos.col}\`)
+  })
+
+  if (newDirection) {
+    console.log("pushing", newDirection)
+    stack.push(newDirection)
+    return newDirection
+  } else {
+    return reverseDirection(stack.pop())
+  }
+}`
+
+const templateSolution = `(class Runner {${input}
+})`
 
 function App() {
   const [state, setState] = useState<State>({
@@ -164,21 +188,51 @@ function App() {
   }
 
   const winner = checkWin(state)
+  const [value, setValue] = useState(input)
+  const [error, setError] = useState("")
 
-  const runner = useMemo(() => new Runner(), [])
+  const makeRunner = (script: string) => {
+    try {
+      setError("")
+      return new (eval(script))()
+    } catch (e: any) {
+      console.log("setting error")
+      setError(e.message)
+      return null
+    }
+  }
+
+  const onChange = (e: any) => {
+    setValue(e.target.value)
+  }
+
+  const runner = useMemo(() => makeRunner(templateSolution), [])
 
   const runCycle = () => {
-    const direction = runner.nextMove(state)
+    if (winner) return
 
-    if (direction) {
-      nextState(direction)
+    if (runner !== null) {
+      const possibleDirections = Object.values(MovementDirection).filter((direction) => {
+        const newPos = getNewPosition(direction, state.playerPosition)
+        return !checkOutside(newPos) && !checkCollision(newPos, state)
+      })
+
+      const direction = runner.nextMove(state, possibleDirections)
+
+      if (direction) {
+        nextState(direction)
+      }
     }
   }
 
   return (
     <div className="App">
       <header className="App-header">
+        <form>
+          <textarea rows={20} cols={120} value={value} onChange={onChange} />
+        </form>
         {winner && <h1>You won!</h1>}
+        {error && <h3>{error}</h3>}
         <div className="grid">
           {map.map((row, rowIndex) => (
             <>
