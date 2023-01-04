@@ -19,5 +19,19 @@
 }
 
 .player {
+  /* triangle shape */
+  clip-path:polygon(50% 0, 100% 100%, 0% 100%);
   background-color: blue;
+}
+
+.right  {
+  transform: rotate(90deg);
+}
+
+.down {
+  transform: rotate(180deg);
+}
+
+.left {
+  transform: rotate(270deg);
 }

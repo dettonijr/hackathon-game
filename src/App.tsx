@@ -10,6 +10,7 @@ type GridCell = "O" | "X" | "." | "P"
 interface Position {
   row: number
   col: number
+  facing: MovementDirection
 }
 
 type Map = GridCell[][]
@@ -26,6 +27,12 @@ enum MovementDirection {
   right = "right",
 }
 
+enum PossibleMoves {
+  ahead = "ahead",
+  turnLeft = "turnLeft",
+  turnRight = "turnRight",
+}
+
 const checkOutside = (position: Position): boolean => {
   const { row, col } = position
   return row < 0 || row >= GRID_SIZE_Y || col < 0 || col >= GRID_SIZE_X
@@ -36,36 +43,112 @@ const checkCollision = (position: Position, state: State): boolean => {
   return state.map[row][col] === "O"
 }
 
-const getNewPosition = (direction: MovementDirection, playerPosition: Position): Position => {
-  const { row, col } = playerPosition
+const getNewPosition = (playerPosition: Position): Position => {
+  const { row, col, facing } = playerPosition
 
-  switch (direction) {
+  switch (facing) {
     case MovementDirection.up:
-      return { row: row - 1, col }
+      return { row: row - 1, col, facing: MovementDirection.up }
     case MovementDirection.down:
-      return { row: row + 1, col }
+      return { row: row + 1, col, facing: MovementDirection.down }
     case MovementDirection.left:
-      return { row, col: col - 1 }
+      return { row, col: col - 1, facing: MovementDirection.left }
     case MovementDirection.right:
-      return { row, col: col + 1 }
+      return { row, col: col + 1, facing: MovementDirection.right }
     default:
-      return { row, col }
+      return { row, col, facing: MovementDirection.up }
   }
 }
 
-const transition = (direction: MovementDirection, state: State) => {
-  const { playerPosition } = state
+const getFullRow = (map: Map, row: number): GridCell[] => {
+  return map[row]
+}
 
-  const newPos = getNewPosition(direction, playerPosition)
+const getFullColumn = (map: Map, col: number): GridCell[] => {
+  return map.map((row) => row[col])
+}
+
+const playerVision = (state: State): GridCell[] => {
+  const { playerPosition, map } = state
+  const { row, col, facing } = playerPosition
+
+  switch (facing) {
+    case MovementDirection.right:
+      return getFullRow(map, row).slice(col + 1, GRID_SIZE_X)
+    case MovementDirection.left:
+      return getFullRow(map, row).slice(0, col).reverse()
+    case MovementDirection.up:
+      return getFullColumn(map, col).slice(0, row).reverse()
+    case MovementDirection.down:
+      return getFullColumn(map, col).slice(row + 1, GRID_SIZE_Y)
+    default:
+      return []
+  }
+}
+
+const moveAhead = (state: State): State => {
+  const { playerPosition } = state
+  const newPos = getNewPosition(playerPosition)
 
   if (checkOutside(newPos)) return state
   if (checkCollision(newPos, state)) return state
 
   const newState = { ...state }
 
-  newState.playerPosition = { row: newPos.row, col: newPos.col }
+  newState.playerPosition = { row: newPos.row, col: newPos.col, facing: newPos.facing }
 
   return newState
+}
+
+const turnLeft = (state: State): State => {
+  const { playerPosition } = state
+  const { facing } = playerPosition
+
+  const newState = { ...state }
+
+  switch (facing) {
+    case MovementDirection.up:
+      newState.playerPosition.facing = MovementDirection.left
+      break
+    case MovementDirection.down:
+      newState.playerPosition.facing = MovementDirection.right
+      break
+    case MovementDirection.left:
+      newState.playerPosition.facing = MovementDirection.down
+      break
+    case MovementDirection.right:
+      newState.playerPosition.facing = MovementDirection.up
+      break
+    default:
+      break
+  }
+
+  return newState
+}
+
+const turnRight = (state: State): State => {
+  const { playerPosition } = state
+  const { facing } = playerPosition
+
+  const newState = { ...state }
+
+  newState.playerPosition.facing = reverseDirection(facing)
+  return newState
+}
+
+const transition = (state: State, move: PossibleMoves) => {
+  const { playerPosition } = state
+
+  switch (move) {
+    case PossibleMoves.ahead:
+      return moveAhead(state)
+    case PossibleMoves.turnLeft:
+      return turnLeft(state)
+    case PossibleMoves.turnRight:
+      return turnRight(state)
+    default:
+      return state
+  }
 }
 
 const randomDirection = (): MovementDirection => {
@@ -77,7 +160,7 @@ const randomDirection = (): MovementDirection => {
 const generateRandomPosition = (): Position => {
   const row = Math.floor(Math.random() * GRID_SIZE_Y)
   const col = Math.floor(Math.random() * GRID_SIZE_X)
-  return { row, col }
+  return { row, col, facing: randomDirection() }
 }
 
 const generateMap = (): Map => {
@@ -116,60 +199,28 @@ const reverseDirection = (direction: MovementDirection): MovementDirection => {
   }
 }
 
-const initialSolution = `(class Runner {
-  constructor() {
-    this.visited = new Set()
-    this.stack = []
-  }
-
-  nextMove = (state) => {
-    const { visited, stack } = this
-    const winner = checkWin(state)
-    if (winner) {
-      return
-    }
-
-    visited.add(\`\${state.playerPosition.row}-\${state.playerPosition.col}\`)
-
-    const newDirection = Object.values(MovementDirection).find((direction) => {
-      const newPos = getNewPosition(direction, state.playerPosition)
-      return !checkOutside(newPos) && !checkCollision(newPos, state) && !visited.has(\`\${newPos.row}-\${newPos.col}\`)
-    })
-
-    if (newDirection) {
-      stack.push(newDirection)
-      return newDirection
-    } else {
-      const lastDirection = stack.pop()
-      if (lastDirection) {
-        return reverseDirection(lastDirection)
-      }
-    }
-  }
-})`
-
 const input = `constructor() {
   this.visited = new Set()
   this.stack = []
 }
 
-nextMove = (state, possibleDirections) => {
+nextMove = (playerPosition, playerVision) => {
   const { visited, stack } = this
 
-  visited.add(\`\${state.playerPosition.row}-\${state.playerPosition.col}\`)
+  console.log("playerPosition", playerPosition)
+  console.log("playerVision", playerVision)
 
-  const newDirection = possibleDirections.find((direction) => {
-    const newPos = getNewPosition(direction, state.playerPosition)
-    return !visited.has(\`\${newPos.row}-\${newPos.col}\`)
-  })
+  visited.add(\`\${playerPosition.row}-\${playerPosition.col}\`)
 
-  if (newDirection) {
-    console.log("pushing", newDirection)
-    stack.push(newDirection)
-    return newDirection
-  } else {
-    return reverseDirection(stack.pop())
+  if (playerVision.length === 0) {
+    return "turnLeft"
   }
+
+  if (playerVision[0] === "O") {
+    return "turnLeft"
+  }
+
+  return "ahead"
 }`
 
 const templateSolution = `(class Runner {${input}
@@ -182,8 +233,8 @@ function App() {
   })
   const { map, playerPosition } = state
 
-  const nextState = (direction: MovementDirection) => {
-    const newState = transition(direction, state)
+  const nextState = (move: PossibleMoves) => {
+    const newState = transition(state, move)
     setState(newState)
   }
 
@@ -212,15 +263,10 @@ function App() {
     if (winner) return
 
     if (runner !== null) {
-      const possibleDirections = Object.values(MovementDirection).filter((direction) => {
-        const newPos = getNewPosition(direction, state.playerPosition)
-        return !checkOutside(newPos) && !checkCollision(newPos, state)
-      })
+      const move = runner.nextMove(state.playerPosition, playerVision(state))
 
-      const direction = runner.nextMove(state, possibleDirections)
-
-      if (direction) {
-        nextState(direction)
+      if (move) {
+        nextState(move)
       }
     }
   }
@@ -241,7 +287,9 @@ function App() {
                   <div
                     key={cellIndex}
                     className={`grid-cell ${
-                      playerPosition.row === rowIndex && playerPosition.col === cellIndex ? "player" : ""
+                      playerPosition.row === rowIndex && playerPosition.col === cellIndex
+                        ? `player ${playerPosition.facing}`
+                        : ""
                     }`}
                   >
                     {cell}
@@ -252,15 +300,6 @@ function App() {
           ))}
         </div>
         <button onClick={runCycle}>Move</button>
-        {Object.values(MovementDirection).map((direction) => (
-          <button
-            onClick={() => {
-              nextState(direction)
-            }}
-          >
-            {direction}
-          </button>
-        ))}
       </header>
     </div>
   )
